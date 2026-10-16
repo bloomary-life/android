@@ -1,0 +1,22 @@
+name: test
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - run: ./gradlew testDebugUnitTest
+      - name: Trace check
+        if: hashFiles('REQUIREMENTS.md') != ''
+        run: bash scripts/trace-check.sh REQUIREMENTS.md app/src/test

@@ -10,10 +10,10 @@
     "linkedInTokenKey": "bloomary_linkedin_token"
   },
   "observability": {
-    "sentryDSN": "https://de50295bcd3f9fb39190f0bf66aaa369@o4511977201205248.ingest.de.sentry.io/4511977218375760",
+    "sentryDSN": "",
     "sentryEnvironment": "production",
     "sentryTracesSampleRate": 0.1,
-    "telemetryDeckAppID": "5BC98248-6BB2-4B83-AB26-308C92836215",
+    "telemetryDeckAppID": "",
     "telemetryDeckNamespace": "eu.dailymind"
   }
 }

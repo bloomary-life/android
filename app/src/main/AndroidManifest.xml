@@ -23,7 +23,7 @@
             android:value="false" />
         <meta-data
             android:name="SentryDSN"
-            android:value="https://de50295bcd3f9fb39190f0bf66aaa369@o4511977201205248.ingest.de.sentry.io/4511977218375760" />
+            android:value="" />
         <meta-data
             android:name="SentryEnvironment"
             android:value="production" />

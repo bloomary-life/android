@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bloomary</string>
+    <string name="tab_insights">Insights</string>
+    <string name="tab_drafts">Drafts</string>
+    <string name="tab_editor">Editor</string>
+    <string name="tab_settings">Settings</string>
+    <string name="posted_toast">Posted to LinkedIn</string>
+    <string name="send_feedback">Send feedback</string>
+</resources>

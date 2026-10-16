@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The iOS AppIcon is a full-bleed 1024pt square; inset so the whole artwork
+     lands inside the adaptive-icon safe zone. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/bloomary_app_icon"
+    android:inset="19%" />

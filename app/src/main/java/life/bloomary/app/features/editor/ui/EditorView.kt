@@ -21,9 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import life.bloomary.app.features.editor.viewmodel.EditorViewModel
 import life.bloomary.app.features.linkedinauth.ui.LinkedInProfilePhoto
-import life.bloomary.app.features.streak.ui.PostSuccessView
+import life.bloomary.app.features.linkedinpost.ui.PostSuccessView
 import life.bloomary.app.shared.ui.AppStyle
 import life.bloomary.app.shared.ui.PrimaryButton
 import life.bloomary.app.shared.ui.SecondaryButton
@@ -46,7 +43,6 @@ fun EditorView(
     viewModel: EditorViewModel,
     onShowDrafts: () -> Unit,
     onPostSucceeded: () -> Unit,
-    onShareStreak: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -54,7 +50,6 @@ fun EditorView(
     val isPaywalled by viewModel.isPaywalled.collectAsState()
     val imageData by viewModel.editorImageData.collectAsState()
     val imageFilename by viewModel.editorImageFilename.collectAsState()
-    var didShareStreak by remember { mutableStateOf(false) }
 
     val imagePicker = rememberPostImagePicker { attachment ->
         viewModel.setAttachedImage(attachment.data, attachment.filename, attachment.mimeType)
@@ -111,11 +106,6 @@ fun EditorView(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                         )
                     },
-                    addStreakFooter = viewModel.addStreakFooter,
-                    onToggleStreakFooter = {
-                        viewModel.addStreakFooter = !viewModel.addStreakFooter
-                        viewModel.streakFooterChanged()
-                    },
                 )
 
                 RichTextEditor(
@@ -168,32 +158,17 @@ fun EditorView(
         ModalBottomSheet(
             onDismissRequest = {
                 viewModel.showsPostSuccess = false
-                if (didShareStreak) {
-                    didShareStreak = false
-                } else {
-                    onPostSucceeded()
-                }
+                onPostSucceeded()
             },
             containerColor = AppStyle.panel,
         ) {
             PostSuccessView(
-                streak = viewModel.publishedStreak,
-                profilePictureURL = viewModel.profile?.pictureURL,
-                onShareBadge = { badgeImage ->
-                    didShareStreak = true
-                    viewModel.startPostWithStreakBadge(badgeImage)
-                    onShareStreak()
-                },
                 onViewOnLinkedIn = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.linkedin.com/in/me/recent-activity/all/".toUri()))
                 },
                 onDismiss = {
                     viewModel.showsPostSuccess = false
-                    if (didShareStreak) {
-                        didShareStreak = false
-                    } else {
-                        onPostSucceeded()
-                    }
+                    onPostSucceeded()
                 },
             )
         }
@@ -221,8 +196,6 @@ private fun EditorToolbar(
     enabled: Boolean,
     onNaturalize: () -> Unit,
     onAttachImage: () -> Unit,
-    addStreakFooter: Boolean,
-    onToggleStreakFooter: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -251,7 +224,6 @@ private fun EditorToolbar(
             ToolbarText("🖼️", onClick = onAttachImage)
             ToolbarText("•")
             ToolbarText("1.")
-            ToolbarText(if (addStreakFooter) "🔥✓" else "🔥", onClick = onToggleStreakFooter)
         }
         HorizontalDivider(color = AppStyle.ink.copy(alpha = 0.12f))
     }

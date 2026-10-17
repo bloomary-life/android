@@ -6,7 +6,6 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import life.bloomary.app.features.streak.model.Streak
 import life.bloomary.app.shared.network.AppJson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -79,11 +78,11 @@ class LinkedInPostService(
         }
 
         // iOS decodes the success payload with `try?`: a malformed body yields
-        // null postId/streak rather than an error.
+        // null postId rather than an error.
         val success = runCatching {
             AppJson.decodeFromString(PostSuccessResponse.serializer(), result.body)
         }.getOrNull()
-        return PublishResult(postID = success?.postId, streak = success?.streak)
+        return PublishResult(postID = success?.postId)
     }
 
     private class HttpResult(val code: Int, val body: String)
@@ -119,14 +118,12 @@ data class LinkedInPostAttachment(
 
 data class PublishResult(
     val postID: String?,
-    val streak: Streak?,
 )
 
 @Serializable
 private data class PostSuccessResponse(
     val status: String? = null,
     val postId: String? = null,
-    val streak: Streak? = null,
 )
 
 data class LinkedInPostCredential(

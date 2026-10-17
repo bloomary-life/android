@@ -20,15 +20,22 @@ import life.bloomary.app.shared.observability.AppTelemetryEvent
  *   session-available sync can register it when signed out.
  *
  * Registration is deduped per memberID + token via [PushTokenStore]; failures
- * are soft (telemetry only), like NotificationReminderService sync.
+ * are soft (telemetry only).
  */
 class NotificationPushRegistrar(
     private val tokenService: NotificationTokenService,
     private val tokenStore: PushTokenStore,
     private val fetchPushToken: suspend () -> String? = ::fetchCurrentFcmToken,
 ) {
+    /**
+     * Wired by MainActivity to the POST_NOTIFICATIONS launcher, mirroring iOS
+     * `requestAuthorization` in NotificationTokenService before registering.
+     */
+    var notificationPermissionRequester: (suspend () -> Boolean)? = null
+
     suspend fun syncRegistration(token: LinkedInToken?) {
         if (token == null || token.accessToken.isEmpty() || token.profile.memberID.isEmpty()) return
+        notificationPermissionRequester?.invoke()
         val pushToken = (fetchPushToken() ?: tokenStore.latestToken())?.trim().orEmpty()
         if (pushToken.isEmpty()) return
         registerIfNeeded(pushToken, token)

@@ -44,7 +44,6 @@ class AccountViewModel(
     private val draftStore: DraftStore,
     private val aiSettingsStore: AISettingsStore,
     private val scope: CoroutineScope,
-    private val clearStreakCache: (String) -> Unit = {},
     private val telemetry: (AppTelemetryEvent) -> Unit = { event -> AppTelemetry.track(event) },
 ) {
     var isConnecting by mutableStateOf(false)
@@ -92,7 +91,6 @@ class AccountViewModel(
             try {
                 if (memberID != null && token != null) {
                     authService.disconnect(memberID, token.accessToken)
-                    clearStreakCache(memberID)
                 }
                 sessionStore.disconnect()
                 aiSettingsStore.clearAPIKey()
@@ -117,9 +115,6 @@ class AccountViewModel(
                     authService.deleteAccount(memberID, token.accessToken)
                 }
                 draftStore.deleteAccountData(ownerID = memberID)
-                if (memberID != null) {
-                    clearStreakCache(memberID)
-                }
                 sessionStore.deleteAccountData()
                 aiSettingsStore.clearAccountDeletionData()
                 authService.requireFreshSignInOnce()

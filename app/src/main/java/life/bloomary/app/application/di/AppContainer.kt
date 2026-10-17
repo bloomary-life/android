@@ -30,11 +30,8 @@ import life.bloomary.app.features.linkedinauth.storage.AuthTokenStore
 import life.bloomary.app.features.linkedinauth.storage.LinkedInTokenStore
 import life.bloomary.app.features.linkedinpost.api.LinkedInPostService
 import life.bloomary.app.features.notifications.api.NotificationPushRegistrar
-import life.bloomary.app.features.notifications.api.NotificationReminderService
 import life.bloomary.app.features.notifications.api.NotificationTokenService
 import life.bloomary.app.features.notifications.storage.DataStorePushTokenStore
-import life.bloomary.app.features.streak.api.DataStoreStreakCacheStore
-import life.bloomary.app.features.streak.api.StreakService
 import life.bloomary.app.shared.observability.AppTelemetry
 
 /**
@@ -74,11 +71,6 @@ class AppContainer(
 
     val naturalizeService: NaturalizeService = NaturalizeService()
 
-    val streakService: StreakService = StreakService(
-        apiBaseURL = configuration.api.baseURL,
-        cacheStore = DataStoreStreakCacheStore(appContext),
-    )
-
     val entitlementService: EntitlementService =
         EntitlementService(apiBaseURL = configuration.api.baseURL)
 
@@ -92,9 +84,6 @@ class AppContainer(
         tokenService = notificationTokenService,
         tokenStore = DataStorePushTokenStore(appContext),
     )
-
-    val notificationReminderService: NotificationReminderService =
-        NotificationReminderService(appContext, streakService)
 
     val draftStore: DraftStore = DraftStore(
         draftRepository = draftRepository,
@@ -116,8 +105,6 @@ class AppContainer(
         postService = postService,
         naturalizeService = naturalizeService,
         aiSettingsStore = aiSettingsStore,
-        streakService = streakService,
-        notificationReminderService = notificationReminderService,
         scope = scope,
     )
 
@@ -127,7 +114,6 @@ class AppContainer(
         draftStore = draftStore,
         aiSettingsStore = aiSettingsStore,
         scope = scope,
-        clearStreakCache = { memberID -> streakService.clearCache(memberID) },
     )
 
     private suspend fun openAuthorization(authURL: String): Boolean = withContext(Dispatchers.Main.immediate) {

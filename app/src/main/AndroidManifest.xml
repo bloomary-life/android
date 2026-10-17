@@ -3,8 +3,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".application.app.BloomaryApp"
@@ -53,7 +51,7 @@
                     android:host="linkedin-connected" />
             </intent-filter>
 
-            <!-- bloomary://editor — carried by local reminder notifications -->
+            <!-- bloomary://editor — carried by server notifications -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -64,22 +62,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Local reminder alarms fired by NotificationReminderService. -->
-        <receiver
-            android:name=".features.notifications.api.ReminderAlarmReceiver"
-            android:exported="false" />
-
-        <!-- iOS local notifications survive reboot; AlarmManager alarms do
-             not, so reminder sync re-runs from persisted state on boot. -->
-        <receiver
-            android:name=".features.notifications.api.ReminderBootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- FCM token refresh + server reminders; registers the token with the
+        <!-- FCM token refresh + server notifications; registers the token with the
              backend like the iOS NotificationTokenService APNs flow. Requires
              google-services.json at build time to receive events. -->
         <service

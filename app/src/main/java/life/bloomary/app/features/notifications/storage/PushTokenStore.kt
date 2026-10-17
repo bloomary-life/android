@@ -11,7 +11,7 @@ private val Context.pushTokenDataStore by preferencesDataStore(name = "bloomary_
 
 /**
  * Persistence for the FCM token handshake. Blocking API mirrors
- * [ReminderFlagStore]/DataStoreStreakCacheStore (runBlocking bridge over
+ * DataStore (runBlocking bridge over
  * DataStore, the UserDefaults stand-in).
  */
 interface PushTokenStore {

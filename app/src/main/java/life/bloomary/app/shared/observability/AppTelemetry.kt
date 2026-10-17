@@ -24,12 +24,6 @@ enum class AppTelemetryEvent(val eventName: String) {
     PostFailed("post_failed"),
     FeedbackOpened("feedback_opened"),
     FeedbackSent("feedback_sent"),
-    StreakViewed("streak_viewed"),
-    StreakBadgeShared("streak_badge_shared"),
-    StreakFooterEnabled("streak_footer_enabled"),
-    StreakMilestone7("streak_milestone_7"),
-    StreakMilestone30("streak_milestone_30"),
-    StreakMilestone100("streak_milestone_100"),
 }
 
 object AppTelemetry {

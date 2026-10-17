@@ -1,6 +1,9 @@
 package life.bloomary.app.features.notifications.api
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -22,10 +25,7 @@ import life.bloomary.app.application.app.BloomaryApp
  * stashed and registered with the backend when a LinkedIn session exists
  * (see [NotificationPushRegistrar]).
  *
- * [onMessageReceived] displays server reminders (wiki:
- * daily-posting-workflow-and-notifications.md) on the same channel as local
- * fallback reminders. Full local-vs-server identity-key suppression is a
- * planned follow-up; server reminders are best-effort there too.
+ * [onMessageReceived] displays server notifications on [CHANNEL_ID].
  */
 class PushTokenMessagingService : FirebaseMessagingService() {
 
@@ -44,9 +44,9 @@ class PushTokenMessagingService : FirebaseMessagingService() {
         val body = message.notification?.body ?: message.data["body"] ?: return
         val deeplink = message.data["deeplink"].orEmpty()
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return
-        NotificationReminderService.ensureChannel(this)
+        ensureChannel(this)
 
-        val builder = NotificationCompat.Builder(this, NotificationReminderService.CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             // Full-colour PNG; no monochrome status-bar icon exists in res yet.
             .setSmallIcon(R.drawable.bloomary_app_icon)
             .setContentTitle(title)
@@ -75,6 +75,19 @@ class PushTokenMessagingService : FirebaseMessagingService() {
             NotificationManagerCompat.from(this).notify(identity.hashCode(), builder.build())
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS revoked.
+        }
+    }
+
+    companion object {
+        const val CHANNEL_ID = "bloomary_post_reminders"
+
+        fun ensureChannel(context: Context) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Posting reminders",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+            context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 }

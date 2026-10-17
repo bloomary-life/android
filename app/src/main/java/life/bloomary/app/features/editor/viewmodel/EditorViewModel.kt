@@ -1,12 +1,8 @@
 package life.bloomary.app.features.editor.viewmodel
 
-import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
@@ -20,10 +16,6 @@ import life.bloomary.app.features.linkedinauth.model.LinkedInProfile
 import life.bloomary.app.features.linkedinauth.model.LinkedInSessionStore
 import life.bloomary.app.features.linkedinpost.api.LinkedInPostAttachment
 import life.bloomary.app.features.linkedinpost.api.LinkedInPostService
-import life.bloomary.app.features.notifications.api.NotificationReminderService
-import life.bloomary.app.features.streak.api.StreakService
-import life.bloomary.app.features.streak.model.Streak
-import life.bloomary.app.features.streak.model.StreakFooter
 import life.bloomary.app.shared.observability.AppTelemetry
 import life.bloomary.app.shared.observability.AppTelemetryEvent
 import life.bloomary.app.shared.observability.PerformanceSignposts
@@ -35,8 +27,6 @@ class EditorViewModel(
     private val postService: LinkedInPostService,
     private val naturalizeService: NaturalizeService,
     private val aiSettingsStore: AISettingsStore,
-    private val streakService: StreakService,
-    private val notificationReminderService: NotificationReminderService,
     private val scope: CoroutineScope,
 ) {
     private var _editorText by mutableStateOf(store.editorText.value)
@@ -55,14 +45,6 @@ class EditorViewModel(
     var isNaturalizing by mutableStateOf(false)
         private set
 
-    var addStreakFooter by mutableStateOf(false)
-
-    var knownStreak by mutableStateOf<Streak?>(null)
-        private set
-
-    var publishedStreak by mutableStateOf<Streak?>(null)
-        private set
-
     var showsPostSuccess by mutableStateOf(false)
 
     val statusMessage: StateFlow<String?> = store.statusMessage
@@ -77,11 +59,7 @@ class EditorViewModel(
         get() = DraftPolicy.trimmedBody(editorText).isNotEmpty()
 
     val composedText: String
-        get() {
-            val body = DraftPolicy.trimmedBody(editorText)
-            if (!addStreakFooter || body.isEmpty()) return editorText
-            return body + StreakFooter.text(day = (knownStreak?.current ?: 0) + 1)
-        }
+        get() = editorText
 
     val previewText: String
         get() = DraftPolicy.trimmedBody(composedText).ifEmpty { "Preview appears here." }
@@ -122,42 +100,6 @@ class EditorViewModel(
         store.setEditorImage(null, null, null)
     }
 
-    fun startPostWithStreakBadge(image: ImageBitmap) {
-        store.startNewPost()
-        val streakDay = publishedStreak?.current ?: knownStreak?.current
-        editorText = if (streakDay != null) {
-            "My \uD83D\uDD25 streak is Day $streakDay. Keeping the habit visible with Bloomary."
-        } else {
-            "My \uD83D\uDD25 streak is growing. Keeping the habit visible with Bloomary."
-        }
-        store.setEditorImage(image.pngData(), "bloomary-streak-badge.png", "image/png")
-        store.saveCurrentDraft()
-        AppTelemetry.track(AppTelemetryEvent.StreakBadgeShared)
-    }
-
-    fun streakFooterChanged() {
-        if (!addStreakFooter) return
-        AppTelemetry.track(AppTelemetryEvent.StreakFooterEnabled)
-        if (knownStreak == null) {
-            scope.launch { loadStreak() }
-        }
-    }
-
-    suspend fun loadStreak(forceRefresh: Boolean = false) {
-        val credential = sessionStore.postCredential
-        if (credential == null) {
-            clearStreakState()
-            return
-        }
-        knownStreak = runCatching { streakService.streak(credential, forceRefresh) }.getOrNull()
-    }
-
-    fun clearStreakState() {
-        knownStreak = null
-        publishedStreak = null
-        addStreakFooter = false
-    }
-
     fun publish() {
         if (store.isPaywalled.value) {
             store.setStatusMessage("Free tier access ended. Posting to LinkedIn is unavailable.")
@@ -196,20 +138,13 @@ class EditorViewModel(
     private suspend fun performPublish() {
         try {
             connectIfNeeded()
-            val result = postService.publish(
+            postService.publish(
                 text = composedText,
                 credential = sessionStore.postCredential,
                 attachment = postAttachment(),
             )
-            notificationReminderService.recordTodayPostAndCancelReminders(sessionStore.token.value)
             store.deletePostedDraftIfSaved()
             finishPost("Posted to LinkedIn", AppTelemetryEvent.PostSucceeded)
-            addStreakFooter = false
-            knownStreak = result.streak ?: knownStreak
-            loadStreak(forceRefresh = true)
-            val freshStreak = knownStreak ?: result.streak
-            trackStreakMilestone(freshStreak)
-            publishedStreak = freshStreak
             showsPostSuccess = true
             removeAttachedImage()
         } catch (e: CancellationException) {
@@ -241,18 +176,4 @@ class EditorViewModel(
         isPosting = false
         AppTelemetry.track(event)
     }
-
-    private fun trackStreakMilestone(streak: Streak?) {
-        when (streak?.current) {
-            7 -> AppTelemetry.track(AppTelemetryEvent.StreakMilestone7)
-            30 -> AppTelemetry.track(AppTelemetryEvent.StreakMilestone30)
-            100 -> AppTelemetry.track(AppTelemetryEvent.StreakMilestone100)
-        }
-    }
-}
-
-private fun ImageBitmap.pngData(): ByteArray {
-    val stream = ByteArrayOutputStream()
-    asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, stream)
-    return stream.toByteArray()
 }

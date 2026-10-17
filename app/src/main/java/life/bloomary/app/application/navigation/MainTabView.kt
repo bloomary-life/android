@@ -64,7 +64,6 @@ import life.bloomary.app.features.insights.ui.InsightsView
 import life.bloomary.app.features.linkedinauth.model.LinkedInProfile
 import life.bloomary.app.features.linkedinauth.model.LinkedInSessionStore
 import life.bloomary.app.features.notifications.api.NotificationPushRegistrar
-import life.bloomary.app.features.notifications.api.NotificationReminderService
 import life.bloomary.app.shared.observability.AppTelemetry
 import life.bloomary.app.shared.observability.AppTelemetryEvent
 import life.bloomary.app.shared.observability.PerformanceSignposts
@@ -91,7 +90,6 @@ fun MainTabView(
     aiSettingsStore: AISettingsStore,
     feedbackService: FeedbackService,
     entitlementService: EntitlementService,
-    notificationReminderService: NotificationReminderService,
     notificationPushRegistrar: NotificationPushRegistrar,
 ) {
     val scope = rememberCoroutineScope()
@@ -100,14 +98,10 @@ fun MainTabView(
     LaunchedEffect(token?.accessToken, token?.profile?.memberID) {
         PerformanceSignposts.appLaunchComplete()
         draftStore.setOwnerID(token?.profile?.memberID)
-        if (token == null) {
-            editorViewModel.clearStreakState()
-        }
         // Push token registration runs on session availability, mirroring the
         // APNs callback-driven registration behind the iOS
         // NotificationTokenService.
         notificationPushRegistrar.syncRegistration(token)
-        notificationReminderService.syncTodayReminder(token)
         val credential = linkedInSessionStore.postCredential
         if (credential == null) {
             draftStore.setPaywalled(false)
@@ -149,10 +143,7 @@ fun MainTabView(
                 .padding(innerPadding),
         ) {
             when (coordinator.selectedTab) {
-                0 -> InsightsView(
-                    knownStreak = editorViewModel.knownStreak,
-                    onLoadStreak = { editorViewModel.loadStreak() },
-                )
+                0 -> InsightsView()
                 1 -> DraftsView(
                     viewModel = draftsViewModel,
                     onOpenDraft = { coordinator.openDraftInEditor() },
@@ -161,7 +152,6 @@ fun MainTabView(
                     viewModel = editorViewModel,
                     onShowDrafts = { coordinator.selectTab(1) },
                     onPostSucceeded = { coordinator.showPostedToast(scope) },
-                    onShareStreak = { coordinator.selectTab(1) },
                 )
                 3 -> AccountSettingsView(
                     viewModel = accountViewModel,

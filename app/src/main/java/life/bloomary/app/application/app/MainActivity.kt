@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        container.notificationReminderService.notificationPermissionRequester = ::requestNotificationPermission
+        container.notificationPushRegistrar.notificationPermissionRequester = ::requestNotificationPermission
         handleDeepLink(intent)
         lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
@@ -55,7 +55,6 @@ class MainActivity : ComponentActivity() {
                     aiSettingsStore = container.aiSettingsStore,
                     feedbackService = container.feedbackService,
                     entitlementService = container.entitlementService,
-                    notificationReminderService = container.notificationReminderService,
                     notificationPushRegistrar = container.notificationPushRegistrar,
                 )
             }

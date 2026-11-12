@@ -55,6 +55,16 @@ class LinkedInSessionStore(
         tokenStore.clear()
     }
 
+    fun expireIfNeeded() {
+        if (_token.value?.isExpired == true) authorizationRejected()
+    }
+
+    /** The server rejected the token (HTTP 401): sign out so nothing retries, and ask the member to reconnect. */
+    fun authorizationRejected() {
+        disconnect()
+        _statusMessage.value = "LinkedIn authorization expired. Reconnect to resume syncing."
+    }
+
     fun deleteAccountData() {
         _token.value = null
         tokenStore.clearAccountDeletionData()

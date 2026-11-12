@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,12 +18,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +49,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -53,11 +64,15 @@ import life.bloomary.app.features.account.ui.AccountSettingsView
 import life.bloomary.app.features.account.viewmodel.AccountViewModel
 import life.bloomary.app.features.ai.storage.AISettingsStore
 import life.bloomary.app.features.drafts.model.DraftStore
+import life.bloomary.app.features.drafts.model.PlanAccess
 import life.bloomary.app.features.drafts.ui.DraftsView
 import life.bloomary.app.features.drafts.viewmodel.DraftsViewModel
 import life.bloomary.app.features.editor.ui.EditorView
 import life.bloomary.app.features.editor.viewmodel.EditorViewModel
 import life.bloomary.app.features.entitlement.api.EntitlementService
+import life.bloomary.app.features.entitlement.api.EntitlementTier
+import life.bloomary.app.features.entitlement.ui.AccessBanner
+import life.bloomary.app.features.entitlement.ui.AccessBannerCopy
 import life.bloomary.app.features.feedback.api.FeedbackService
 import life.bloomary.app.features.feedback.ui.FeedbackView
 import life.bloomary.app.features.insights.ui.InsightsView
@@ -94,23 +109,44 @@ fun MainTabView(
 ) {
     val scope = rememberCoroutineScope()
     val token by linkedInSessionStore.token.collectAsState()
+    val plan by draftStore.plan.collectAsState()
+    val scheduledPosts by draftStore.scheduledPosts.collectAsState()
+    val pendingDraft by draftStore.pendingDraft.collectAsState()
+
+    LaunchedEffect(Unit) {
+        PerformanceSignposts.appLaunchComplete()
+        draftStore.onAuthorizationExpired = { linkedInSessionStore.authorizationRejected() }
+    }
 
     LaunchedEffect(token?.accessToken, token?.profile?.memberID) {
-        PerformanceSignposts.appLaunchComplete()
-        draftStore.setOwnerID(token?.profile?.memberID)
+        draftStore.setSession(token?.profile?.memberID, token?.accessToken)
         // Push token registration runs on session availability, mirroring the
         // APNs callback-driven registration behind the iOS
         // NotificationTokenService.
         notificationPushRegistrar.syncRegistration(token)
-        val credential = linkedInSessionStore.postCredential
-        if (credential == null) {
-            draftStore.setPaywalled(false)
-        } else {
-            runCatching { entitlementService.entitlement(credential) }.getOrNull()?.let { entitlement ->
-                draftStore.setPaywalled(entitlement.isPaywalled)
-                if (entitlement.isPaywalled && coordinator.selectedTab == 2) {
-                    coordinator.selectTab(1)
-                }
+        refreshPlan(linkedInSessionStore, entitlementService, draftStore)
+    }
+
+    // Mirrors the iOS scenePhase == .active handler.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            linkedInSessionStore.expireIfNeeded()
+            scope.launch { refreshPlan(linkedInSessionStore, entitlementService, draftStore) }
+            draftStore.refreshFromRemote()
+            scope.launch { editorViewModel.refreshScheduleStatus() }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Schedule status every 30 s while the app is in the foreground.
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                editorViewModel.refreshScheduleStatus()
+                delay(30_000)
             }
         }
     }
@@ -137,11 +173,21 @@ fun MainTabView(
             }
         },
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
+            // Persistent banner from `docs/product/tiers.md` "Copy" rows 1–2, 6.
+            // Signed out gets no banner: local writing works without an account.
+            if (token != null && plan.isLapsed) {
+                val hasPendingSchedules = scheduledPosts.any { it.status in setOf("pending", "processing", "retry") }
+                AccessBanner(
+                    message = AccessBannerCopy.lapsed(plan.subscriptionSource, plan.accessUntil),
+                    detail = if (hasPendingSchedules) plan.accessUntil?.let(AccessBannerCopy::scheduledStillPublish) else null,
+                )
+            }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (coordinator.selectedTab) {
                 0 -> InsightsView()
                 1 -> DraftsView(
@@ -180,7 +226,82 @@ fun MainTabView(
                 )
             }
         }
+        }
     }
+
+    pendingDraft?.let {
+        AlertDialog(
+            onDismissRequest = { draftStore.cancelOpenDraft() },
+            title = { Text("Discard unsaved changes?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    draftStore.confirmOpenDraft()
+                    coordinator.openDraftInEditor()
+                }) { Text("Discard and open draft", color = AppStyle.coral) }
+            },
+            dismissButton = { TextButton(onClick = { draftStore.cancelOpenDraft() }) { Text("Keep editing") } },
+        )
+    }
+
+    if (editorViewModel.showsSchedulePublishedAlert) {
+        AlertDialog(
+            onDismissRequest = { editorViewModel.showsSchedulePublishedAlert = false },
+            title = { Text("Post published") },
+            text = { Text("Your scheduled post is now live on LinkedIn.") },
+            confirmButton = { TextButton(onClick = { editorViewModel.showsSchedulePublishedAlert = false }) { Text("OK") } },
+        )
+    }
+
+    if (editorViewModel.showsScheduleFailureAlert) {
+        AlertDialog(
+            onDismissRequest = { editorViewModel.showsScheduleFailureAlert = false },
+            title = { Text("Scheduled post needs attention") },
+            text = {
+                Text(editorViewModel.scheduleFailureMessage ?: "Reconnect LinkedIn to update your token, then schedule the post again.")
+            },
+            confirmButton = { TextButton(onClick = { editorViewModel.showsScheduleFailureAlert = false }) { Text("OK") } },
+        )
+    }
+}
+
+/** Loads the server entitlement and hands the drafts slice its [PlanAccess] (the app layer joins the two slices). */
+private suspend fun refreshPlan(
+    sessionStore: LinkedInSessionStore,
+    entitlementService: EntitlementService,
+    draftStore: DraftStore,
+) {
+    val credential = sessionStore.postCredential
+    if (credential == null) {
+        draftStore.setPlan(PlanAccess())
+        return
+    }
+    val entitlement = try {
+        entitlementService.entitlement(credential)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
+    if (sessionStore.postCredential != credential) return
+    if (entitlement == null) {
+        draftStore.setStatusMessage("Plan status unavailable. Reconnect or refresh Settings.")
+        draftStore.setPlan(PlanAccess())
+        return
+    }
+    draftStore.setPlan(
+        PlanAccess(
+            tier = when (entitlement.accessTier) {
+                EntitlementTier.trial -> PlanAccess.Tier.Trial
+                EntitlementTier.pro -> PlanAccess.Tier.Pro
+                EntitlementTier.lapsed -> PlanAccess.Tier.Lapsed
+            },
+            isPro = entitlement.isPro,
+            subscriptionSource = entitlement.subscriptionSource,
+            accessUntil = entitlement.accessUntil,
+            maxDraftBodyRunes = entitlement.maxDraftBodyRunes ?: 4000,
+            maxImageBytes = entitlement.maxImageBytes ?: 5 * 1024 * 1024,
+        ),
+    )
 }
 
 /**

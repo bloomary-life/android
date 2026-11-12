@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import life.bloomary.app.features.drafts.model.DraftStore
 
 /**
  * Holds the tab/navigation UI state that lives in `@State` inside
@@ -15,9 +14,7 @@ import life.bloomary.app.features.drafts.model.DraftStore
  * so feature layers (editor publish success, drafts list) can trigger the same
  * transitions the SwiftUI closures perform.
  */
-class MainTabCoordinator(
-    private val draftStore: DraftStore,
-) {
+class MainTabCoordinator {
     var selectedTab by mutableIntStateOf(2)
         private set
 
@@ -27,20 +24,16 @@ class MainTabCoordinator(
     var showsFeedback by mutableStateOf(false)
         private set
 
-    private var opensDraftInEditor by mutableStateOf(false)
-
-    /** Mirrors `selectTab(_:)`: entering Editor resets the draft unless a draft was opened. */
+    /**
+     * Mirrors `selectTab(_:)`: switching tabs keeps the editor as it is (iOS
+     * stopped resetting it once opening a draft asks before discarding changes).
+     */
     fun selectTab(tab: Int) {
-        if (tab == 2 && !opensDraftInEditor) {
-            draftStore.startNewPost()
-        }
-        opensDraftInEditor = false
         selectedTab = tab
     }
 
     /** Mirrors `openDraftInEditor()`. */
     fun openDraftInEditor() {
-        opensDraftInEditor = true
         selectedTab = 2
     }
 

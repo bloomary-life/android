@@ -36,4 +36,12 @@ data class LinkedInToken(
     val profile: LinkedInProfile,
     @Serializable(with = Iso8601InstantSerializer::class)
     val connectedAt: Instant,
-)
+) {
+    /** Expired 5 minutes early, like `LinkedInToken.isExpired` on iOS. */
+    val isExpired: Boolean
+        get() {
+            val seconds = expiresIn ?: return false
+            if (seconds <= 0) return false
+            return connectedAt.plusSeconds(seconds - 300L) <= Instant.now()
+        }
+}

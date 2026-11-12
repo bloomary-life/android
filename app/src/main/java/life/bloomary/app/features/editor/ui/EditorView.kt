@@ -13,14 +13,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +41,7 @@ import life.bloomary.app.features.editor.viewmodel.EditorViewModel
 import life.bloomary.app.features.linkedinauth.ui.LinkedInProfilePhoto
 import life.bloomary.app.features.linkedinpost.ui.PostSuccessView
 import life.bloomary.app.shared.ui.AppStyle
+import life.bloomary.app.shared.ui.DateTimePickerField
 import life.bloomary.app.shared.ui.PrimaryButton
 import life.bloomary.app.shared.ui.SecondaryButton
 
@@ -47,7 +55,12 @@ fun EditorView(
 ) {
     val context = LocalContext.current
     val statusMessage by viewModel.statusMessage.collectAsState()
-    val isPaywalled by viewModel.isPaywalled.collectAsState()
+    val syncStatus by viewModel.syncStatus.collectAsState()
+    val plan by viewModel.plan.collectAsState()
+    val drafts by viewModel.drafts.collectAsState()
+    val editingDraftID by viewModel.editingDraftID.collectAsState()
+    val draftLimitWarning = remember(plan, drafts, editingDraftID) { viewModel.draftLimitWarning }
+    var scheduleDate by remember { mutableStateOf(viewModel.defaultScheduleDate()) }
     val imageData by viewModel.editorImageData.collectAsState()
     val imageFilename by viewModel.editorImageFilename.collectAsState()
 
@@ -64,6 +77,7 @@ fun EditorView(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -87,8 +101,17 @@ fun EditorView(
                 )
             }
 
-            if (isPaywalled) {
-                PaywallBanner()
+            draftLimitWarning?.let { warning ->
+                Text(
+                    text = "⚠ $warning",
+                    color = AppStyle.ink,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AppStyle.coral.copy(alpha = 0.1f))
+                        .padding(10.dp),
+                )
             }
 
             Column(
@@ -108,18 +131,26 @@ fun EditorView(
                     },
                 )
 
+                Text(
+                    text = syncStatus.message,
+                    color = AppStyle.muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+
                 RichTextEditor(
                     text = viewModel.editorText,
                     onTextChange = { viewModel.editorText = it },
                     hasText = viewModel.hasEditorText,
                     onClear = { viewModel.clearEditor() },
-                    enabled = !isPaywalled,
                 )
             }
 
             statusMessage?.let { message ->
                 Text(text = message, color = AppStyle.muted, fontSize = 15.sp)
             }
+
+            Text(text = viewModel.postingSuggestions, color = AppStyle.muted, fontSize = 12.sp)
 
             LinkedInPreview(viewModel)
 
@@ -138,20 +169,97 @@ fun EditorView(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             HorizontalDivider(color = AppStyle.ink.copy(alpha = 0.12f))
+            // Gate on lapsed, not isPro: trial schedules too. Locked controls stay
+            // tappable and explain why instead of going inert.
+            SecondaryButton(
+                text = if (plan.isLapsed) "Schedule · Pro" else "Schedule",
+                enabled = !viewModel.isPosting && !viewModel.isScheduling && (viewModel.hasEditorText || imageData != null),
+                onClick = {
+                    if (plan.isLapsed) {
+                        viewModel.showPlanRequired()
+                    } else {
+                        scheduleDate = viewModel.defaultScheduleDate()
+                        viewModel.scheduleMessage = null
+                        viewModel.showsSchedulePicker = true
+                    }
+                },
+            )
             SecondaryButton(
                 text = "Save draft",
-                enabled = !isPaywalled,
+                enabled = !(draftLimitWarning != null && !plan.isLapsed),
                 onClick = {
-                    viewModel.save()
-                    onShowDrafts()
+                    if (viewModel.save()) onShowDrafts()
                 },
             )
             PrimaryButton(
                 text = if (viewModel.isPosting) "Posting..." else "Post to LinkedIn",
-                enabled = !isPaywalled && !viewModel.isPosting && !viewModel.isNaturalizing,
-                onClick = { viewModel.publish() },
+                enabled = !viewModel.isPosting && !viewModel.isNaturalizing,
+                onClick = { if (plan.isLapsed) viewModel.showPlanRequired() else viewModel.publish() },
             )
         }
+    }
+
+    if (viewModel.showsPublishRetryConfirmation) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showsPublishRetryConfirmation = false },
+            title = { Text("Check LinkedIn before posting again") },
+            text = { Text("This content was already submitted. It may have published even if Bloomary did not receive a response.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.showsPublishRetryConfirmation = false
+                    viewModel.publish(confirmRetry = true)
+                }) { Text("I checked · Post again", color = AppStyle.coral) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        viewModel.showsPublishRetryConfirmation = false
+                        context.startActivity(Intent(Intent.ACTION_VIEW, LINKEDIN_RECENT_ACTIVITY.toUri()))
+                    }) { Text("Open LinkedIn") }
+                    TextButton(onClick = { viewModel.showsPublishRetryConfirmation = false }) { Text("Cancel") }
+                }
+            },
+        )
+    }
+
+    if (viewModel.showsAIConsent) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showsAIConsent = false },
+            title = { Text("Send this draft to Google Gemini?") },
+            text = {
+                Text(
+                    "Naturalize English sends the text of this draft to Google Gemini with your Gemini API key. " +
+                        "Google processes it under its own terms. Bloomary asks once; deleting your account resets this choice.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { viewModel.allowAIAndNaturalize() }) { Text("Allow") } },
+            dismissButton = { TextButton(onClick = { viewModel.showsAIConsent = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (viewModel.showsSchedulePicker) {
+        AlertDialog(
+            onDismissRequest = { viewModel.showsSchedulePicker = false },
+            title = { Text("Schedule post") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    DateTimePickerField(
+                        value = scheduleDate,
+                        onValueChange = { scheduleDate = it },
+                        min = viewModel.earliestScheduleDate(),
+                        max = viewModel.latestScheduleDate(),
+                    )
+                    Text(text = viewModel.scheduleLimitText, color = AppStyle.muted, fontSize = 12.sp)
+                    viewModel.scheduleMessage?.let { Text(text = it, color = AppStyle.coral, fontSize = 14.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = !viewModel.isScheduling, onClick = { viewModel.schedule(scheduleDate) }) {
+                    Text(if (viewModel.isScheduling) "Scheduling…" else "Schedule")
+                }
+            },
+            dismissButton = { TextButton(onClick = { viewModel.showsSchedulePicker = false }) { Text("Cancel") } },
+        )
     }
 
     if (viewModel.showsPostSuccess) {
@@ -164,7 +272,7 @@ fun EditorView(
         ) {
             PostSuccessView(
                 onViewOnLinkedIn = {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, "https://www.linkedin.com/in/me/recent-activity/all/".toUri()))
+                    context.startActivity(Intent(Intent.ACTION_VIEW, LINKEDIN_RECENT_ACTIVITY.toUri()))
                 },
                 onDismiss = {
                     viewModel.showsPostSuccess = false
@@ -175,20 +283,7 @@ fun EditorView(
     }
 }
 
-@Composable
-private fun PaywallBanner() {
-    Text(
-        text = "Free tier access ended.",
-        color = AppStyle.ink,
-        fontSize = 15.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(AppStyle.lime.copy(alpha = 0.35f))
-            .padding(12.dp),
-    )
-}
+private const val LINKEDIN_RECENT_ACTIVITY = "https://www.linkedin.com/in/me/recent-activity/all/"
 
 @Composable
 private fun EditorToolbar(

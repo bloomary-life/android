@@ -1,9 +1,11 @@
 package life.bloomary.app.features.drafts.domain
 
 import java.time.Instant
+import java.util.UUID
 import kotlinx.serialization.Serializable
 import life.bloomary.app.features.drafts.model.Draft
 import life.bloomary.app.shared.network.Iso8601InstantSerializer
+import life.bloomary.app.shared.network.UUIDSerializer
 
 /**
  * Versioned local cache envelope for drafts. Persisted behind `DraftRepository`
@@ -18,6 +20,8 @@ data class DraftSnapshot(
     val loadedAt: Instant = Instant.now(),
     @Serializable(with = Iso8601InstantSerializer::class)
     val lastSuccessfulSyncAt: Instant? = null,
+    /** Drafts the server is known to hold; null for snapshots written before sync existed. */
+    val syncedIDs: Set<@Serializable(with = UUIDSerializer::class) UUID>? = null,
     val schemaVersion: Int = currentSchemaVersion,
 ) {
     companion object {

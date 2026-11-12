@@ -9,6 +9,9 @@
     "draftsKey": "bloomary_drafts",
     "linkedInTokenKey": "bloomary_linkedin_token"
   },
+  "scheduling": {
+    "maxAheadDays": 31
+  },
   "observability": {
     "sentryDSN": "",
     "sentryEnvironment": "production",

@@ -1,6 +1,8 @@
 package life.bloomary.app.features.account.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +94,17 @@ fun AccountSettingsView(
     var showsDetail by remember { mutableStateOf(false) }
 
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val bytes = viewModel.exportedDrafts
+        val written = uri != null && bytes != null && runCatching {
+            context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } != null
+        }.getOrDefault(false)
+        viewModel.exportWritten(written)
+    }
+    LaunchedEffect(viewModel.exportedDrafts) {
+        if (viewModel.exportedDrafts != null) exportLauncher.launch("bloomary-drafts.zip")
+    }
     val hasFeedback = feedbackService != null
 
     LaunchedEffect(Unit) {
@@ -259,6 +274,41 @@ fun AccountSettingsView(
 
             aiStatusMessage?.let { message ->
                 Text(text = message, color = AppStyle.muted, fontSize = 15.sp)
+            }
+        }
+
+        if (isConnected) {
+            val plan by viewModel.plan.collectAsStateWithLifecycle()
+            val reducesData by viewModel.isDataReductionEnabled.collectAsStateWithLifecycle()
+            Text(text = viewModel.planStatus(plan), color = AppStyle.ink, fontSize = 15.sp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppStyle.panel)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Reduce data usage",
+                        color = AppStyle.ink,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = reducesData, onCheckedChange = { viewModel.setDataReductionEnabled(it) })
+                }
+                Text(
+                    text = "When on, automatic draft sync is paused. Scheduling still uploads the selected draft and its image so Bloomary can publish it.",
+                    color = AppStyle.muted,
+                    fontSize = 12.sp,
+                )
+                SecondaryButton(
+                    text = if (viewModel.isExportingDrafts) "Exporting..." else "Export all drafts",
+                    enabled = !viewModel.isExportingDrafts,
+                    onClick = { viewModel.exportDrafts() },
+                )
             }
         }
 

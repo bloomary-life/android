@@ -42,6 +42,12 @@ fun RichTextEditor(
                 onTextChange(it)
             },
             textStyle = TextStyle(color = AppStyle.ink, fontSize = 17.sp),
+            decorationBox = { innerTextField ->
+                if (text.isEmpty()) {
+                    Text(text = "Write a LinkedIn post...", color = AppStyle.muted, fontSize = 17.sp)
+                }
+                innerTextField()
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 260.dp)

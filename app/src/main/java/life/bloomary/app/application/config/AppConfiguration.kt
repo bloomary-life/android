@@ -15,6 +15,7 @@ data class AppConfiguration(
     val api: API,
     val linkedIn: LinkedIn,
     val storage: Storage,
+    val scheduling: Scheduling = Scheduling(),
     val observability: Observability = Observability.disabled,
 ) {
     @Serializable
@@ -37,6 +38,11 @@ data class AppConfiguration(
     data class Storage(
         val draftsKey: String,
         val linkedInTokenKey: String,
+    )
+
+    @Serializable
+    data class Scheduling(
+        val maxAheadDays: Int = 31,
     )
 
     @Serializable

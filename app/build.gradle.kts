@@ -43,6 +43,11 @@ android {
         }
     }
 
+    testOptions {
+        // android.util.Log and SystemClock return defaults in JVM unit tests instead of throwing.
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -79,4 +84,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
 }

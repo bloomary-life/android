@@ -9,6 +9,8 @@ import java.util.Base64
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import life.bloomary.app.shared.storage.BooleanSetting
+import life.bloomary.app.shared.storage.InMemoryBooleanSetting
 
 /**
  * Mirrors ios/Features/AI/Storage/AISettingsStore.swift.
@@ -25,7 +27,17 @@ interface AIAPIKeyStore {
 
 class AISettingsStore(
     private val keyStore: AIAPIKeyStore,
+    private val consentSetting: BooleanSetting = InMemoryBooleanSetting(),
 ) {
+    /** The member allowed sending draft text to Google Gemini (IOS-006 / AND-006). */
+    private val _hasAIConsent = MutableStateFlow(consentSetting.load())
+    val hasAIConsent: StateFlow<Boolean> = _hasAIConsent.asStateFlow()
+
+    fun grantAIConsent() {
+        _hasAIConsent.value = true
+        consentSetting.save(true)
+    }
+
     private val _apiKey = MutableStateFlow(keyStore.load() ?: "")
     val apiKey: StateFlow<String> = _apiKey.asStateFlow()
 
@@ -56,6 +68,8 @@ class AISettingsStore(
     }
 
     fun clearAccountDeletionData() {
+        _hasAIConsent.value = false
+        consentSetting.save(false)
         clearAPIKey()
     }
 }

@@ -15,9 +15,13 @@ import life.bloomary.app.features.account.viewmodel.AccountViewModel
 import life.bloomary.app.features.ai.api.NaturalizeService
 import life.bloomary.app.features.ai.storage.AISettingsStore
 import life.bloomary.app.features.ai.storage.KeystoreAIAPIKeyStore
+import life.bloomary.app.features.drafts.api.DraftExportService
+import life.bloomary.app.features.drafts.api.SyncedDraftsService
 import life.bloomary.app.features.drafts.model.DraftStore
 import life.bloomary.app.features.drafts.storage.DataStoreDraftRepository
 import life.bloomary.app.features.drafts.storage.DraftRepository
+import life.bloomary.app.features.drafts.storage.SyncSettingsStore
+import life.bloomary.app.features.editor.storage.SharedPreferencesPublishAttemptStore
 import life.bloomary.app.features.drafts.viewmodel.DraftsViewModel
 import life.bloomary.app.features.editor.viewmodel.EditorViewModel
 import life.bloomary.app.features.entitlement.api.EntitlementService
@@ -33,6 +37,7 @@ import life.bloomary.app.features.notifications.api.NotificationPushRegistrar
 import life.bloomary.app.features.notifications.api.NotificationTokenService
 import life.bloomary.app.features.notifications.storage.DataStorePushTokenStore
 import life.bloomary.app.shared.observability.AppTelemetry
+import life.bloomary.app.shared.storage.SharedPreferencesBooleanSetting
 
 /**
  * Manual DI container mirroring ios/Application/DI/AppContainer.swift.
@@ -85,18 +90,37 @@ class AppContainer(
         tokenStore = DataStorePushTokenStore(appContext),
     )
 
+    private val apiHost: String = configuration.api.baseURL.toUri().host ?: "unknown"
+
+    val syncSettingsStore: SyncSettingsStore = SyncSettingsStore(
+        SharedPreferencesBooleanSetting(appContext, configuration.storage.draftsKey + ".reduce-data"),
+    )
+
     val draftStore: DraftStore = DraftStore(
         draftRepository = draftRepository,
+        syncService = SyncedDraftsService(apiBaseURL = configuration.api.baseURL),
+        syncSettingsStore = syncSettingsStore,
+        scope = scope,
         telemetry = AppTelemetry::track,
     )
 
     val aiSettingsStore: AISettingsStore = AISettingsStore(
         keyStore = KeystoreAIAPIKeyStore(appContext),
+        consentSetting = SharedPreferencesBooleanSetting(appContext, "ai-gemini-consent"),
     )
 
-    val mainTabCoordinator: MainTabCoordinator = MainTabCoordinator(draftStore)
+    private val draftScheduling = LinkedInDraftScheduling(postService)
 
-    val draftsViewModel: DraftsViewModel = DraftsViewModel(draftStore)
+    private val publishAttempts = SharedPreferencesPublishAttemptStore(appContext, apiHost)
+
+    val mainTabCoordinator: MainTabCoordinator = MainTabCoordinator()
+
+    val draftsViewModel: DraftsViewModel = DraftsViewModel(
+        store = draftStore,
+        scheduling = draftScheduling,
+        scope = scope,
+        scheduleMaxAheadDays = configuration.scheduling.maxAheadDays,
+    )
 
     val editorViewModel: EditorViewModel = EditorViewModel(
         store = draftStore,
@@ -106,6 +130,9 @@ class AppContainer(
         naturalizeService = naturalizeService,
         aiSettingsStore = aiSettingsStore,
         scope = scope,
+        scheduling = draftScheduling,
+        publishAttempts = publishAttempts,
+        scheduleMaxAheadDays = configuration.scheduling.maxAheadDays,
     )
 
     val accountViewModel: AccountViewModel = AccountViewModel(
@@ -114,6 +141,12 @@ class AppContainer(
         draftStore = draftStore,
         aiSettingsStore = aiSettingsStore,
         scope = scope,
+        syncSettingsStore = syncSettingsStore,
+        exportDraftArchive = DraftExportService(apiBaseURL = configuration.api.baseURL)::export,
+        clearAccountCaches = { memberID ->
+            entitlementService.clearCache(memberID)
+            publishAttempts.clear(memberID)
+        },
     )
 
     private suspend fun openAuthorization(authURL: String): Boolean = withContext(Dispatchers.Main.immediate) {
